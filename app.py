@@ -16,10 +16,9 @@ def universal_thai_cleaner(text):
     # 2. Normalization ขั้นสูงสุด
     text = unicodedata.normalize('NFKC', text)
     
-    # 3. Unicode Mapping พิเศษ (เน้นซ่อม ค้นคว้า และ ด้วย)
-    # เราต้องเปลี่ยนรหัสพิเศษให้เป็นคำที่ถูกต้อง "ก่อน" ที่จะสั่งลบขยะ Unicode
-    text = text.replace('ค', 'ค้น').replace('คว', 'คว้า') # ดักจับ ค้นคว้า
-    text = text.replace('ด', 'ด้') # ดักจับ ด้วย
+    # 3. Unicode Mapping และซ่อมคำเฉพาะหน้า (ค้นคว้า, ด้วย)
+    text = text.replace('ค', 'ค้น').replace('คว', 'คว้า')
+    text = text.replace('ด', 'ด้')
     
     unicode_map = {
         '\uf701': 'ิ', '\uf702': 'ี', '\uf703': 'ึ', '\uf704': 'ื',
@@ -31,19 +30,18 @@ def universal_thai_cleaner(text):
     for char, corrected in unicode_map.items():
         text = text.replace(char, corrected)
 
-    # 4. ลบอักขระขยะ Unicode และช่องว่างทั้งหมด
+    # 4. ล้างรหัส Unicode ขยะและช่องว่างทั้งหมด
     text = re.sub(r'[\u0000-\u001f\u007f-\u009f\uf000-\uf0ff\u200b\u00a0]', '', text)
     text = "".join(text.split())
 
-    # 5. แก้ไขปัญหาพยัญชนะเบิ้ลท้ายคำ (น หนู ใน ค้นน และ อ ใน ต่ออ)
-    text = text.replace('ค้นน', 'ค้น')
+    # 5. แก้ไขพยัญชนะเบิ้ลและสระกระโดด (ศลิป -> ศิลป, ฟิสกิ -> ฟิสิก)
+    text = text.replace('ศลิป', 'ศิลป์') # ซ่อม "ทัศนศิลป์"
+    text = text.replace('ฟิสกิ', 'ฟิสิก') # ซ่อม "ฟิสิกส์"
     text = text.replace('ต่ออ', 'ต่อ')
+    text = text.replace('ค้นน', 'ค้น')
     text = text.replace('ข้ออ', 'ข้อ')
     text = text.replace('แผ่นน', 'แผ่น')
-    text = text.replace('เขียนน', 'เขียน')
-    text = text.replace('อ่านาน', 'อ่าน')
     text = text.replace('นำา', 'นำ')
-    text = text.replace('ฟิสกิ', 'ฟิสิก')
     text = text.replace('ฟ่ง', 'ฟัง')
     
     # 6. ยุบสระที่เบิ้ล (เเ, แแ, าา)
@@ -52,24 +50,22 @@ def universal_thai_cleaner(text):
         text = text.replace('แแ', 'แ')
         text = text.replace('าา', 'า')
     
-    # 7. คลังซ่อมคำมาตรฐาน (กลุ่ม ศึกษา, เพิ่มเติม, วิทยาศาสตร์)
+    # 7. คลังซ่อมคำมาตรฐาน
     if 'พิ่มเติม' in text and 'เพิ่ม' not in text:
         text = text.replace('พิ่มเติม', 'เพิ่มเติม')
-    
-    # ซ่อมคำว่า ค้นคว้า อีกรอบเพื่อความชัวร์ถ้ามี น หลุดมา
-    if 'ค้นนคว้า' in text: text = text.replace('ค้นนคว้า', 'ค้นคว้า')
-    if 'คนคว้า' in text and 'ค้นคว้า' not in text: text = text.replace('คนคว้า', 'ค้นคว้า')
 
     corrections = {
         'ศกึ': 'ศึก',
         'วิทยาศาตร์': 'วิทยาศาสตร์',
         'นาฏศิลป1': 'นาฏศิลป์ 1',
         'นาฏศิลป2': 'นาฏศิลป์ 2',
-        'ทัศนศิลป': 'ทัศนศิลป์',
+        'ทัศนศิลป1': 'ทัศนศิลป์ 1',
+        'ทัศนศิลป2': 'ทัศนศิลป์ 2',
         'ฟิสิกส': 'ฟิสิกส์',
         'คณิตศาสตร': 'คณิตศาสตร์',
         'ผลติ': 'ผลิต',
         'คาสตร์': 'ศาสตร์',
+        'วดีโอ': 'วิดีโอ',
         'เ์': '์'
     }
     for wrong, right in corrections.items():
@@ -83,10 +79,10 @@ def universal_thai_cleaner(text):
 
     return text.strip()
 
-st.set_page_config(page_title="ระบบดึงข้อมูลอัจฉริยะ v51", layout="wide")
-st.title("📂 ระบบดึงข้อมูล (ซ่อม 'ค้นคว้า' และ 'ค้นน')")
+st.set_page_config(page_title="ระบบดึงข้อมูลอัจฉริยะ v52", layout="wide")
+st.title("📂 ระบบดึงข้อมูล (ซ่อม 'ทัศนศิลป์' และชื่อวิชาเพี้ยน)")
 
-uploaded_file = st.file_uploader("เลือกไฟล์ PDF เพื่อรัน v51", type="pdf")
+uploaded_file = st.file_uploader("เลือกไฟล์ PDF เพื่อรัน v52", type="pdf")
 
 if uploaded_file is not None:
     all_data = []
@@ -125,10 +121,10 @@ if uploaded_file is not None:
 
     if all_data:
         df = pd.DataFrame(all_data).drop_duplicates()
-        st.success(f"ดึงข้อมูลสำเร็จ! พบทั้งหมด {len(df)} รายการ")
+        st.success(f"ดึงข้อมูลสำเร็จ! พบ {len(df)} รายการ")
         st.dataframe(df, use_container_width=True)
         
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             df.to_excel(writer, index=False)
-        st.download_button("📥 ดาวน์โหลดไฟล์ Excel", output.getvalue(), "student_report_v51.xlsx")
+        st.download_button("📥 ดาวน์โหลดไฟล์ Excel", output.getvalue(), "student_report_v52.xlsx")
