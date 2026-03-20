@@ -29,11 +29,11 @@ def universal_thai_cleaner(text):
     text = re.sub(r'[\u0000-\u001f\u007f-\u009f\uf000-\uf0ff\u200b\u00a0]', '', text)
     text = "".join(text.split())
 
-    # 4. แก้ปัญหาคำเบิ้ลและคำเพี้ยน (ฟ่ง -> ฟัง, อ่านาน -> อ่าน, นำา -> นำ)
+    # 4. แก้ปัญหาคำเพี้ยนเฉพาะหน้า (ฟิสกิ -> ฟิสิก, ฟ่ง -> ฟัง, อ่านาน -> อ่าน)
+    text = text.replace('ฟิสกิ', 'ฟิสิก')
     text = text.replace('ฟ่ง', 'ฟัง')
     text = text.replace('อ่านาน', 'อ่าน')
     text = text.replace('นำา', 'นำ')
-    text = text.replace('ทำา', 'ทำ')
     
     # 5. ยุบสระที่เบิ้ล (เเ, แแ, าา)
     for _ in range(2):
@@ -41,7 +41,7 @@ def universal_thai_cleaner(text):
         text = text.replace('แแ', 'แ')
         text = text.replace('าา', 'า')
     
-    # 6. ซ่อมคำเฉพาะ (กลุ่ม ศึกษา, เพิ่มเติม, วิทยาศาสตร์)
+    # 6. ซ่อมคำกลุ่ม "ศึกษา" "เพิ่มเติม" "วิทยาศาสตร์"
     if 'พิ่มเติม' in text and 'เพิ่ม' not in text:
         text = text.replace('พิ่มเติม', 'เพิ่มเติม')
 
@@ -68,10 +68,10 @@ def universal_thai_cleaner(text):
 
     return text.strip()
 
-st.set_page_config(page_title="ระบบดึงข้อมูลอัจฉริยะ v47", layout="wide")
-st.title("📂 ระบบดึงข้อมูล (แก้ไข 'ฟ่ง' เป็น 'ฟัง' และล้างขยะชื่อวิชา)")
+st.set_config = st.set_page_config(page_title="ระบบดึงข้อมูลอัจฉริยะ v48", layout="wide")
+st.title("📂 ระบบดึงข้อมูล (ซ่อมฟิสิกส์ และสระเบิ้ล)")
 
-uploaded_file = st.file_uploader("เลือกไฟล์ PDF เพื่อรัน v47", type="pdf")
+uploaded_file = st.file_uploader("เลือกไฟล์ PDF เพื่อรัน v48", type="pdf")
 
 if uploaded_file is not None:
     all_data = []
@@ -117,4 +117,4 @@ if uploaded_file is not None:
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             df.to_excel(writer, index=False)
-        st.download_button("📥 ดาวน์โหลดไฟล์ Excel", output.getvalue(), "student_report_v47.xlsx")
+        st.download_button("📥 ดาวน์โหลดไฟล์ Excel", output.getvalue(), "report_v48.xlsx")
