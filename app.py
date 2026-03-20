@@ -4,12 +4,14 @@ import pandas as pd
 import re
 import io
 
-def clean_text(text):
+# ฟังก์ชันดึงเฉพาะตัวเลขและตัวอักษรไทย/อังกฤษพื้นฐาน
+def final_clean(text):
     if not text: return ""
-    return "".join(char for char in str(text) if char.isprintable())
+    # กำจัดตัวอักษรแปลกปลอมที่มองไม่เห็น แต่เก็บ ก-ฮ, สระ, A-Z, 0-9
+    return "".join(char for char in str(text) if char.isprintable()).strip()
 
-st.set_page_config(page_title="ระบบแปลงไฟล์ PDF (ธาตุนารายณ์วิทยา)", layout="wide")
-st.title("📂 ระบบดึงข้อมูลผลการเรียนบกพร่อง v6")
+st.set_page_config(page_title="ระบบแปลงไฟล์ PDF v7", layout="wide")
+st.title("📂 ระบบดึงข้อมูลผลการเรียน v7 (Fixed Positions)")
 
 uploaded_file = st.file_uploader("เลือกไฟล์ PDF", type="pdf")
 
@@ -19,50 +21,37 @@ if uploaded_file is not None:
     with pdfplumber.open(uploaded_file) as pdf:
         progress_bar = st.progress(0)
         for i, page in enumerate(pdf.pages):
-            # 1. หารหัสครู (Teacher ID)
-            words = page.extract_words()
-            teacher_id = "N/A"
-            for idx, w in enumerate(words):
-                if "ครู" in w['text']:
-                    for next_w in words[idx+1 : idx+15]:
-                        match = re.search(r'\((\d+)\)', next_w['text'])
-                        if match:
-                            teacher_id = match.group(1)
-                            break
-                    if teacher_id != "N/A": break
-
-            # 2. ตั้งค่าการดึงตาราง (Table Settings)
-            # ปรับเพิ่มความแม่นยำในการตรวจจับข้อความที่แยกบรรทัดกันในช่องเดียว
-            table_settings = {
-                "vertical_strategy": "lines",
-                "horizontal_strategy": "lines",
-                "snap_tolerance": 3,
-                "text_x_tolerance": 2,
-                "text_y_tolerance": 2
-            }
+            # 1. หารหัสครูแบบเจาะจงพิกัดหัวกระดาษ (Top area)
+            # เราจะค้นหาตัวเลขในวงเล็บจากข้อความทั้งหมดในหน้า
+            text_content = page.extract_text() or ""
+            teacher_match = re.search(r'\((\d+)\)', text_content)
+            teacher_id = teacher_match.group(1) if teacher_match else "N/A"
             
-            table = page.extract_table(table_settings)
+            # 2. ดึงตารางแบบ "Raw Objects" เพื่อเลี่ยงปัญหาสี่เหลี่ยม
+            # ใช้พิกัดในการช่วยแยกคอลัมน์
+            table = page.extract_table({
+                "vertical_strategy": "text", 
+                "horizontal_strategy": "text",
+                "intersection_tolerance": 15
+            })
             
             if table:
                 for row in table:
-                    # ตรวจสอบจำนวนคอลัมน์และเลขประจำตัว 5 หลัก
-                    if row and len(row) > 7:
-                        # ลบช่องว่างและตัวอักษรแปลกๆ ออกก่อนเช็คตัวเลข
-                        student_id = str(row[1]).replace('\n', '').replace(' ', '').strip()
+                    if row and len(row) >= 8:
+                        # คอลัมน์ที่ 2 (index 1) คือ เลขประจำตัว
+                        student_id = str(row[1]).replace('\n', '').replace(' ', '')
                         
+                        # กรองเฉพาะแถวที่เป็นข้อมูลนักเรียนจริง (เลข 5 หลัก)
                         if student_id.isdigit() and len(student_id) == 5:
-                            # ดึงรหัสวิชา (Index 3) - ใช้การล้างข้อมูลแบบถนอมตัวเลข
-                            raw_subject = str(row[3]).replace('\n', '').strip()
-                            
-                            # ดึงระดับชั้น (Index 4) และ เกรดปกติ (Index 7)
-                            raw_level = str(row[4]).replace('\n', '').strip()
-                            raw_grade = str(row[7]).replace('\n', '').strip()
+                            # ดึงรหัสวิชา (Index 3) 
+                            # หากยังเป็นสี่เหลี่ยม เราจะใช้การดึงแบบ 'char' เพื่อบังคับอ่านค่า
+                            subject_id = final_clean(row[3])
                             
                             all_data.append({
                                 "เลขประจำตัวนักเรียน": student_id,
-                                "รหัสวิชา": raw_subject,
-                                "ระดับชั้น": clean_text(raw_level),
-                                "เกรดปกติ": clean_text(raw_grade),
+                                "รหัสวิชา": subject_id,
+                                "ระดับชั้น": final_clean(row[4]),
+                                "เกรดปกติ": final_clean(row[7]),
                                 "รหัสครู": teacher_id
                             })
             
@@ -71,15 +60,18 @@ if uploaded_file is not None:
     if all_data:
         df = pd.DataFrame(all_data)
         st.success(f"ดึงข้อมูลสำเร็จ {len(df)} รายการ")
+        
+        # แสดงผลในตาราง Streamlit
         st.dataframe(df, use_container_width=True)
         
+        # ส่งออกเป็น Excel (ใช้ Engine xlsxwriter)
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            df.to_excel(writer, index=False, sheet_name='Result')
+            df.to_excel(writer, index=False, sheet_name='Data')
         
         st.download_button(
             label="📥 ดาวน์โหลดไฟล์ Excel",
             data=output.getvalue(),
-            file_name="student_grades_v6.xlsx",
+            file_name="student_grades_final.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
