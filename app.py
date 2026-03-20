@@ -35,14 +35,18 @@ def universal_thai_cleaner(text):
     text = "".join(text.split())
 
     # 5. แก้ไขพยัญชนะเบิ้ลและสระกระโดด (ศลิป -> ศิลป, ฟิสกิ -> ฟิสิก)
-    text = text.replace('ศลิป', 'ศิลป์') # ซ่อม "ทัศนศิลป์"
-    text = text.replace('ฟิสกิ', 'ฟิสิก') # ซ่อม "ฟิสิกส์"
+    text = text.replace('ศลิป', 'ศิลป์') 
+    text = text.replace('ฟิสกิ', 'ฟิสิก') 
     text = text.replace('ต่ออ', 'ต่อ')
     text = text.replace('ค้นน', 'ค้น')
     text = text.replace('ข้ออ', 'ข้อ')
     text = text.replace('แผ่นน', 'แผ่น')
     text = text.replace('นำา', 'นำ')
     text = text.replace('ฟ่ง', 'ฟัง')
+    
+    # --- จุดที่แก้ไขเพิ่มเติมสำหรับวิชาภาษาอังกฤษ ---
+    text = text.replace('อ่านาน', 'อ่าน') 
+    # ------------------------------------------
     
     # 6. ยุบสระที่เบิ้ล (เเ, แแ, าา)
     for _ in range(2):
@@ -79,10 +83,11 @@ def universal_thai_cleaner(text):
 
     return text.strip()
 
-st.set_page_config(page_title="ระบบดึงข้อมูลอัจฉริยะ v52", layout="wide")
-st.title("📂 ระบบดึงข้อมูล (ซ่อม 'ทัศนศิลป์' และชื่อวิชาเพี้ยน)")
+# ส่วนที่เหลือของ Streamlit เหมือนเดิมทั้งหมด
+st.set_page_config(page_title="ระบบดึงข้อมูลอัจฉริยะ v53", layout="wide")
+st.title("📂 ระบบดึงข้อมูล (แก้ไข 'อ่านาน' -> 'อ่าน')")
 
-uploaded_file = st.file_uploader("เลือกไฟล์ PDF เพื่อรัน v52", type="pdf")
+uploaded_file = st.file_uploader("เลือกไฟล์ PDF เพื่อรัน v53", type="pdf")
 
 if uploaded_file is not None:
     all_data = []
@@ -127,4 +132,4 @@ if uploaded_file is not None:
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             df.to_excel(writer, index=False)
-        st.download_button("📥 ดาวน์โหลดไฟล์ Excel", output.getvalue(), "student_report_v52.xlsx")
+        st.download_button("📥 ดาวน์โหลดไฟล์ Excel", output.getvalue(), "student_report_v53.xlsx")
