@@ -13,10 +13,8 @@ def universal_thai_cleaner(text):
         if divider in text:
             text = text.split(divider)[0]
 
-    # 2. Normalization ขั้นสูงสุด (NFKC)
+    # 2. Normalization และแปลงรหัส Unicode พิเศษ
     text = unicodedata.normalize('NFKC', text)
-    
-    # 3. แปลงรหัส Unicode พิเศษเป็นมาตรฐาน
     unicode_map = {
         '\uf701': 'ิ', '\uf702': 'ี', '\uf703': 'ึ', '\uf704': 'ื',
         '\uf705': '่', '\uf706': '้', '\uf70e': '์', '\uf710': '่',
@@ -27,27 +25,23 @@ def universal_thai_cleaner(text):
     for char, corrected in unicode_map.items():
         text = text.replace(char, corrected)
 
-    # 4. ลบอักขระขยะ Unicode ทั้งหมด (รวมตัวที่มองไม่เห็น \u200b, \u00a0 ฯลฯ)
+    # 3. ลบอักขระขยะ Unicode และช่องว่างล่องหนทั้งหมด
     text = re.sub(r'[\u0000-\u001f\u007f-\u009f\uf000-\uf0ff\u200b\u00a0]', '', text)
-    
-    # 5. ลบช่องว่าง "ทุกชนิด" ออกเพื่อให้ตัวอักษรชนกันสนิทที่สุด
     text = "".join(text.split())
 
-    # 6. ขั้นตอนยุบตัวซ้ำ (เเ, แแ, าา, ์์) - ทำซ้ำหลายรอบเพื่อความชัวร์
-    for _ in range(3):
+    # 4. แก้ปัญหาคำเบิ้ลและคำเพี้ยน (ฟ่ง -> ฟัง, อ่านาน -> อ่าน, นำา -> นำ)
+    text = text.replace('ฟ่ง', 'ฟัง')
+    text = text.replace('อ่านาน', 'อ่าน')
+    text = text.replace('นำา', 'นำ')
+    text = text.replace('ทำา', 'ทำ')
+    
+    # 5. ยุบสระที่เบิ้ล (เเ, แแ, าา)
+    for _ in range(2):
         text = text.replace('เเ', 'เ')
         text = text.replace('แแ', 'แ')
         text = text.replace('าา', 'า')
-        text = text.replace('นำา', 'นำ')
-        text = text.replace('อ่านาน', 'อ่าน')
     
-    # 7. ใช้ Regex ยุบตัวซ้ำอีกชั้น (กรณีมามากกว่า 2 ตัว)
-    text = re.sub(r'เ{2,}', 'เ', text)
-    text = re.sub(r'า{2,}', 'า', text)
-
-    # 8. ซ่อมคำเฉพาะและตำแหน่งวรรณยุกต์
-    text = text.replace('เ์', '์') # ลบสระเอที่ติดมากับการันต์
-    
+    # 6. ซ่อมคำเฉพาะ (กลุ่ม ศึกษา, เพิ่มเติม, วิทยาศาสตร์)
     if 'พิ่มเติม' in text and 'เพิ่ม' not in text:
         text = text.replace('พิ่มเติม', 'เพิ่มเติม')
 
@@ -60,23 +54,24 @@ def universal_thai_cleaner(text):
         'ฟิสิกส': 'ฟิสิกส์',
         'คณิตศาสตร': 'คณิตศาสตร์',
         'ผลติ': 'ผลิต',
-        'คาสตร์': 'ศาสตร์'
+        'คาสตร์': 'ศาสตร์',
+        'เ์': '์'
     }
     for wrong, right in corrections.items():
         text = text.replace(wrong, right)
 
-    # 9. ยุบวรรณยุกต์ซ้ำ (์์, ่่, ้้)
+    # 7. ยุบวรรณยุกต์ซ้ำ (์์, ่่, ้้)
     text = re.sub(r'([่้๊๋์])\1+', r'\1', text)
     
-    # 10. คืนค่าช่องว่าง 1 เคาะ หน้าตัวเลขท้ายชื่อวิชา
+    # 8. คืนค่าช่องว่าง 1 เคาะ หน้าตัวเลขท้ายชื่อวิชา
     text = re.sub(r'(\d+)$', r' \1', text)
 
     return text.strip()
 
-st.set_page_config(page_title="ระบบดึงข้อมูลอัจฉริยะ v46", layout="wide")
-st.title("📂 ระบบดึงข้อมูล (จบปัญหาสระเบิ้ล เเ)")
+st.set_page_config(page_title="ระบบดึงข้อมูลอัจฉริยะ v47", layout="wide")
+st.title("📂 ระบบดึงข้อมูล (แก้ไข 'ฟ่ง' เป็น 'ฟัง' และล้างขยะชื่อวิชา)")
 
-uploaded_file = st.file_uploader("อัปโหลดไฟล์ PDF เพื่อทดสอบ v46", type="pdf")
+uploaded_file = st.file_uploader("เลือกไฟล์ PDF เพื่อรัน v47", type="pdf")
 
 if uploaded_file is not None:
     all_data = []
@@ -122,4 +117,4 @@ if uploaded_file is not None:
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             df.to_excel(writer, index=False)
-        st.download_button("📥 ดาวน์โหลดไฟล์ Excel", output.getvalue(), "student_report_v46.xlsx")
+        st.download_button("📥 ดาวน์โหลดไฟล์ Excel", output.getvalue(), "student_report_v47.xlsx")
