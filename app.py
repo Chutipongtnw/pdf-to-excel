@@ -87,7 +87,7 @@ def universal_thai_cleaner(text):
 st.set_page_config(page_title="ระบบแปลงไฟล์ PDF to Excel เฉพาะไฟล์ผลการเรียนบกพร่อง รายครู ธนว เท่านั้น", layout="wide")
 st.title("📂 ระบบแปลงไฟล์ PDF to Excel เฉพาะไฟล์ผลการเรียนบกพร่อง รายครู ธนว เท่านั้น")
 
-uploaded_file = st.file_uploader("เลือกไฟล์ PDF เพื่อรัน v53", type="pdf")
+uploaded_file = st.file_uploader("เลือกไฟล์ PDF เพื่อแปลงเป็น Excel", type="pdf")
 
 if uploaded_file is not None:
     all_data = []
