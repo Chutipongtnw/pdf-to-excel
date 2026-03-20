@@ -4,25 +4,30 @@ import pandas as pd
 import re
 import io
 
-# ฟังก์ชันล้างชื่อวิชาให้สะอาด 100%
 def clean_subject_name(text):
     if not text: return "N/A"
     
-    # 1. ลบอักขระขยะที่ทำให้เกิดช่องว่าง (เช่น เ หรืออักขระ Unicode แปลกๆ)
-    # ลบ \uf02d และอักขระในช่วง Unicode ที่มักเป็นตัวปัญหาใน PDF ภาษาไทย
-    text = re.sub(r'[\uf000-\uf0ff]', '', text) 
-    text = text.replace('เ', '์').replace('สตรเ', 'สตร์เ')
+    # 1. ลบอักขระขยะ Unicode ที่มักกลายเป็นสี่เหลี่ยมหรือช่องว่าง (Private Use Area)
+    # และตัวการันต์ที่แยกส่วน (เ )
+    text = re.sub(r'[\uf000-\uf0ff]', '', text)
+    text = text.replace('เ ', '์').replace('เ', '์').replace('ร ', 'ร์')
     
-    # 2. ตัดส่วนที่ขึ้นต้นด้วย "จำนวน" หรือ "จํานวน" ออกให้หมด
+    # 2. แก้ไขคำเฉพาะที่มักผิดพลาดในไฟล์โรงเรียน
+    text = text.replace('คณิตศาสตร ', 'คณิตศาสตร์')
+    text = text.replace('คณิตศาสตร์พิ่มเติม', 'คณิตศาสตร์เพิ่มเติม')
+    
+    # 3. ตัด "จำนวน...หน่วยการเรียน" ออกให้หมด 
+    # ใช้ Regex ค้นหาคำว่า 'จำนวน' หรือ 'จํานวน' และตัดทุกอย่างที่ตามมา
     text = re.split(r'จ[ำา]นวน', text)[0]
     
-    # 3. ลบช่องว่างที่ซ้ำซ้อน
-    text = " ".join(text.split())
+    # 4. จัดการช่องว่าง: ลบช่องว่างซ้ำซ้อนให้เหลือ 1 เคาะมาตรฐาน
+    # แต่ถ้าเป็นชื่อวิชาแล้วตามด้วยตัวเลข (เช่น ภาษาไทย 2) ให้คงไว้ 1 เคาะ
+    text = re.sub(r'\s+', ' ', text)
     
     return text.strip()
 
-st.set_page_config(page_title="ระบบแปลงไฟล์ PDF v20", layout="wide")
-st.title("📂 ระบบดึงข้อมูลผลการเรียน (ล้างชื่อวิชาสมบูรณ์แบบ)")
+st.set_page_config(page_title="ระบบแปลงไฟล์ PDF v21", layout="wide")
+st.title("📂 ระบบดึงข้อมูลผลการเรียน (ล้างข้อมูลชื่อวิชาแบบเด็ดขาด)")
 
 uploaded_file = st.file_uploader("อัปโหลดไฟล์ PDF", type="pdf")
 
@@ -46,8 +51,9 @@ if uploaded_file is not None:
             for line in lines:
                 if "ชื่อวิชา" in line:
                     # แยกเอาเฉพาะส่วนหลังคำว่า "ชื่อวิชา"
-                    raw_subject = line.split("ชื่อวิชา")[-1]
-                    subject_name = clean_subject_name(raw_subject)
+                    parts = line.split("ชื่อวิชา")
+                    if len(parts) > 1:
+                        subject_name = clean_subject_name(parts[-1])
                     break
 
             # 3. ดึงข้อมูลจากตาราง
@@ -79,14 +85,13 @@ if uploaded_file is not None:
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             df.to_excel(writer, index=False, sheet_name='Grades')
             worksheet = writer.sheets['Grades']
-            # ปรับความกว้างคอลัมน์อัตโนมัติ
             for idx, col in enumerate(df.columns):
-                max_len = max(df[col].astype(str).map(len).max(), len(col)) + 2
+                max_len = max(df[col].astype(str).map(len).max(), len(col)) + 5
                 worksheet.set_column(idx, idx, max_len)
         
         st.download_button(
             label="📥 ดาวน์โหลดไฟล์ Excel",
             data=output.getvalue(),
-            file_name="student_grades_v20.xlsx",
+            file_name="student_grades_v21.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
