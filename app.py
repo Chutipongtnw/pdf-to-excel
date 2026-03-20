@@ -20,7 +20,8 @@ def universal_thai_cleaner(text):
         '\uf705': '่', '\uf706': '้', '\uf70e': '์', '\uf710': '่',
         '\uf711': '้', '\uf714': '์', '\uf71a': '์', '\uf709': '',
         '\uf712': 'เ', '\uf713': 'เ',
-        'อ': 'อ่าน', 'ข': 'ข้อ', 'ค': 'ค้น', 'ต': 'ต่อ', 'นํ': 'นำ', 'ผ': 'แผ่น'
+        'อ': 'อ่าน', 'ข': 'ข้อ', 'ค': 'ค้น', 'ต': 'ต่อ', 'นํ': 'นำ', 'ผ': 'แผ่น',
+        'ด': 'ด้' # ซ่อมคำว่า 'ด้วย' ที่ไม้โทมักหาย
     }
     for char, corrected in unicode_map.items():
         text = text.replace(char, corrected)
@@ -29,11 +30,14 @@ def universal_thai_cleaner(text):
     text = re.sub(r'[\u0000-\u001f\u007f-\u009f\uf000-\uf0ff\u200b\u00a0]', '', text)
     text = "".join(text.split())
 
-    # 4. แก้ปัญหาคำเพี้ยนเฉพาะหน้า (ฟิสกิ -> ฟิสิก, ฟ่ง -> ฟัง, อ่านาน -> อ่าน)
-    text = text.replace('ฟิสกิ', 'ฟิสิก')
-    text = text.replace('ฟ่ง', 'ฟัง')
+    # 4. แก้ปัญหาพยัญชนะเบิ้ลท้ายคำ (ข้ออ, แผ่นน, เขียนน)
+    text = text.replace('ข้ออ', 'ข้อ')
+    text = text.replace('แผ่นน', 'แผ่น')
+    text = text.replace('เขียนน', 'เขียน')
     text = text.replace('อ่านาน', 'อ่าน')
     text = text.replace('นำา', 'นำ')
+    text = text.replace('ฟิสกิ', 'ฟิสิก')
+    text = text.replace('ฟ่ง', 'ฟัง')
     
     # 5. ยุบสระที่เบิ้ล (เเ, แแ, าา)
     for _ in range(2):
@@ -41,9 +45,11 @@ def universal_thai_cleaner(text):
         text = text.replace('แแ', 'แ')
         text = text.replace('าา', 'า')
     
-    # 6. ซ่อมคำกลุ่ม "ศึกษา" "เพิ่มเติม" "วิทยาศาสตร์"
+    # 6. ซ่อมคำเฉพาะและโครงสร้างที่ผิดเพี้ยน
     if 'พิ่มเติม' in text and 'เพิ่ม' not in text:
         text = text.replace('พิ่มเติม', 'เพิ่มเติม')
+    if 'ด้ว ย' in text or 'ดวย' in text: # กรณีไม้โทหายหรือกระโดด
+        text = text.replace('ดวย', 'ด้วย')
 
     corrections = {
         'ศกึ': 'ศึก',
@@ -60,7 +66,7 @@ def universal_thai_cleaner(text):
     for wrong, right in corrections.items():
         text = text.replace(wrong, right)
 
-    # 7. ยุบวรรณยุกต์ซ้ำ (์์, ่่, ้้)
+    # 7. ยุบวรรณยุกต์ซ้ำ
     text = re.sub(r'([่้๊๋์])\1+', r'\1', text)
     
     # 8. คืนค่าช่องว่าง 1 เคาะ หน้าตัวเลขท้ายชื่อวิชา
@@ -68,16 +74,15 @@ def universal_thai_cleaner(text):
 
     return text.strip()
 
-st.set_config = st.set_page_config(page_title="ระบบดึงข้อมูลอัจฉริยะ v48", layout="wide")
-st.title("📂 ระบบดึงข้อมูล (ซ่อมฟิสิกส์ และสระเบิ้ล)")
+st.set_page_config(page_title="ระบบดึงข้อมูลอัจฉริยะ v49", layout="wide")
+st.title("📂 ระบบดึงข้อมูล (ซ่อม 'ข้ออ' และ 'ด้วย')")
 
-uploaded_file = st.file_uploader("เลือกไฟล์ PDF เพื่อรัน v48", type="pdf")
+uploaded_file = st.file_uploader("เลือกไฟล์ PDF เพื่อรัน v49", type="pdf")
 
 if uploaded_file is not None:
     all_data = []
     with pdfplumber.open(uploaded_file) as pdf:
         progress_bar = st.progress(0)
-        total_p = len(pdf.pages)
         for i, page in enumerate(pdf.pages):
             raw_text = page.extract_text() or ""
             
@@ -107,7 +112,7 @@ if uploaded_file is not None:
                                 "เกรดปกติ": str(row[7]).replace('\n', '').strip() if row[7] else "",
                                 "รหัสครู": teacher_id
                             })
-            progress_bar.progress((i + 1) / total_p)
+            progress_bar.progress((i + 1) / len(pdf.pages))
 
     if all_data:
         df = pd.DataFrame(all_data).drop_duplicates()
@@ -117,4 +122,4 @@ if uploaded_file is not None:
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             df.to_excel(writer, index=False)
-        st.download_button("📥 ดาวน์โหลดไฟล์ Excel", output.getvalue(), "report_v48.xlsx")
+        st.download_button("📥 ดาวน์โหลดไฟล์ Excel", output.getvalue(), "report_v49.xlsx")
