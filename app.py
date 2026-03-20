@@ -4,20 +4,13 @@ import pandas as pd
 import re
 import io
 
-# ฟังก์ชันล้างอักขระขยะแบบถนอมข้อมูล (เก็บทุกอย่างที่เป็นตัวอักษรและตัวเลข)
-def super_clean(value):
-    if value is None:
-        return ""
-    # แทนที่การขึ้นบรรทัดใหม่ด้วยช่องว่าง
-    s = str(value).replace('\n', ' ').strip()
-    # ลบเฉพาะพวก Control Characters (อักขระสั่งการระบบ) ที่ Excel ไม่ชอบ
-    # แต่จะเก็บ ภาษาไทย ภาษาอังกฤษ และ ตัวเลข ไว้ทั้งหมด
-    s = "".join(char for char in s if char.isprintable())
-    return s
+def clean_text(text):
+    if not text: return ""
+    # ลบอักขระควบคุมที่ทำให้ Excel พัง แต่เก็บไทย อังกฤษ เลข และช่องว่าง
+    return "".join(char for char in str(text) if char.isprintable())
 
-st.set_page_config(page_title="ระบบแปลงไฟล์ PDF ผลการเรียน", layout="wide")
-st.title("📂 ระบบดึงข้อมูลผลการเรียนบกพร่อง (PDF to Excel)")
-st.subheader("โรงเรียนธาตุนารายณ์วิทยา")
+st.set_page_config(page_title="ระบบแปลงไฟล์ PDF (ธาตุนารายณ์วิทยา)", layout="wide")
+st.title("📂 ระบบดึงข้อมูลผลการเรียนบกพร่อง v4")
 
 uploaded_file = st.file_uploader("เลือกไฟล์ PDF", type="pdf")
 
@@ -26,56 +19,59 @@ if uploaded_file is not None:
     
     with pdfplumber.open(uploaded_file) as pdf:
         progress_bar = st.progress(0)
-        num_pages = len(pdf.pages)
-        
         for i, page in enumerate(pdf.pages):
-            # ดึงข้อความดิบทั้งหมดในหน้า
-            raw_text = page.extract_text() or ""
-            
-            # --- วิธีหารหัสครูแบบใหม่ (ค้นหาตัวเลข 3 หลักที่อยู่ต้นๆ หน้า) ---
+            # 1. หารหัสครู (Teacher ID) โดยหาคำว่า "ครู" แล้วดูคำถัดไปที่มีวงเล็บ
+            words = page.extract_words()
             teacher_id = "N/A"
-            # หาตัวเลข 3 หลัก (รหัสครู) เช่น 124, 203, 102
-            # เราจะหาตัวเลข 3 หลักที่อาจจะอยู่ในวงเล็บหรือไม่ก็ได้
-            teacher_matches = re.findall(r'\(?\s*(\d{3})\s*\)?', raw_text)
-            if teacher_matches:
-                # โดยปกติรหัสครูจะปรากฏเป็นลำดับต้นๆ ของข้อความในหน้า 
-                teacher_id = teacher_matches[0]
+            for idx, w in enumerate(words):
+                if "ครู" in w['text']:
+                    # ค้นหาใน 10 คำถัดไปเพื่อหาเลขในวงเล็บ
+                    for next_w in words[idx+1 : idx+10]:
+                        match = re.search(r'\((\d+)\)', next_w['text'])
+                        if match:
+                            teacher_id = match.group(1)
+                            break
+                    if teacher_id != "N/A": break
+
+            # 2. ดึงตารางโดยเน้นความละเอียดสูง
+            table = page.extract_table({
+                "vertical_strategy": "lines_relative",
+                "horizontal_strategy": "lines_relative",
+            })
             
-            # ดึงตาราง
-            table = page.extract_table()
             if table:
                 for row in table:
-                    # ตรวจสอบแถวข้อมูลนักเรียน (เช็คจากเลขประจำตัว 5 หลัก) 
-                    if row and len(row) > 1:
-                        # ลบช่องว่างและขึ้นบรรทัดใหม่ก่อนเช็คว่าเป็นตัวเลขไหม
-                        student_id_check = str(row[1]).replace('\n', '').strip()
-                        
-                        if student_id_check.isdigit() and len(student_id_check) == 5:
+                    # ตรวจสอบว่าแถวนี้มีเลขประจำตัว 5 หลักหรือไม่
+                    if len(row) > 1:
+                        student_id = str(row[1]).replace('\n', '').strip()
+                        if student_id.isdigit() and len(student_id) == 5:
+                            
+                            # ดึงรหัสวิชา (Column Index 3) 
+                            # แก้ปัญหาตัวเลขหายด้วยการดึงซ้ำและลบแค่ขึ้นบรรทัดใหม่
+                            raw_subject = str(row[3]).replace('\n', '').strip()
+                            
                             all_data.append({
-                                "เลขประจำตัวนักเรียน": super_clean(row[1]),
-                                "รหัสวิชา": super_clean(row[3]), # ดึงค่าดิบ ไม่กรองตัวเลขออกแล้ว
-                                "ระดับชั้น": super_clean(row[4]),
-                                "เกรดปกติ": super_clean(row[7]),
+                                "เลขประจำตัวนักเรียน": student_id,
+                                "รหัสวิชา": raw_subject,
+                                "ระดับชั้น": clean_text(row[4]),
+                                "เกรดปกติ": clean_text(row[7]),
                                 "รหัสครู": teacher_id
                             })
             
-            progress_bar.progress((i + 1) / num_pages)
+            progress_bar.progress((i + 1) / len(pdf.pages))
 
     if all_data:
         df = pd.DataFrame(all_data)
-        st.success(f"ดึงข้อมูลสำเร็จ! พบข้อมูลทั้งหมด {len(df)} รายการ")
-        
-        # แสดงผลในหน้าเว็บ
+        st.success(f"ดึงข้อมูลสำเร็จ {len(df)} รายการ")
         st.dataframe(df, use_container_width=True)
         
-        # ส่วนการดาวน์โหลด
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            df.to_excel(writer, index=False, sheet_name='Data')
+            df.to_excel(writer, index=False, sheet_name='Result')
         
         st.download_button(
-            label="📥 ดาวน์โหลดไฟล์ Excel (.xlsx)",
+            label="📥 ดาวน์โหลดไฟล์ Excel",
             data=output.getvalue(),
-            file_name="student_report_v3.xlsx",
+            file_name="student_grades_v4.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
