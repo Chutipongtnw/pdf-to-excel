@@ -8,43 +8,41 @@ import unicodedata
 def universal_thai_cleaner(text):
     if not text: return "N/A"
     
-    # 1. ตัดส่วน "จำนวน" ออกทันที (ตัดทิ้งตั้งแต่คำแรกที่เจอ)
+    # 1. ตัดส่วน "จำนวน" ออกทันที
     for divider in ["จำนวน", "จํานวน", "หน่วย"]:
         if divider in text:
             text = text.split(divider)[0]
 
-    # 2. จัดระเบียบ Unicode (Normalization) เพื่อให้รหัสตัวอักษรเป็นมาตรฐานเดียวกัน
+    # 2. Normalization และแปลงรหัส Unicode พิเศษ
     text = unicodedata.normalize('NFKC', text)
-
-    # 3. ล้างรหัส Unicode กลุ่มพิเศษที่มักแฝงมา (รวมรหัส \uf712, \uf713 ที่เป็นสระเอปลอม)
     unicode_map = {
         '\uf701': 'ิ', '\uf702': 'ี', '\uf703': 'ึ', '\uf704': 'ื',
         '\uf705': '่', '\uf706': '้', '\uf70e': '์', '\uf710': '่',
         '\uf711': '้', '\uf714': '์', '\uf71a': '์', '\uf709': '',
-        '\uf712': 'เ', '\uf713': 'เ', 
-        '\uf715': 'ิ', '\uf716': 'ุ', '\uf717': 'ู',
+        '\uf712': 'เ', '\uf713': 'เ',
         'อ': 'อ่าน', 'ข': 'ข้อ', 'ค': 'ค้น', 'ต': 'ต่อ', 'นํ': 'นำ', 'ผ': 'แผ่น'
     }
     for char, corrected in unicode_map.items():
         text = text.replace(char, corrected)
 
-    # 4. กำจัดอักขระขยะในช่วง Private Use Area (\uf000-\uf0ff)
+    # 3. ลบอักขระขยะ Unicode (\uf000-\uf0ff) และลบช่องว่างทั้งหมดเพื่อให้ตัวอักษรชนกัน
     text = re.sub(r'[\uf000-\uf0ff]', '', text)
-
-    # 5. ลบช่องว่างทั้งหมดเพื่อให้ตัวอักษรมาชนกันสนิท (รวมช่องว่างล่องหน)
     text = re.sub(r'\s+', '', text)
 
-    # 6. แก้ไขปัญหา "เเ" (สระเอสองตัว) แบบเจาะจงขั้นสูงสุด
-    # ใช้ Regex ดักจับ สระเอ ที่อยู่ติดกัน หรือมีตัวอักษรอื่นคั่น 1 ตัวแล้วยุบ
-    text = re.sub(r'เ+เ+', 'เ', text)
-    text = re.sub(r'เ+์', '์', text) # ลบ เ หน้าตัวการันต์ (เช่น ศาสตร์เ์ -> ศาสตร์)
-    text = re.sub(r'เ+เพิ่ม', 'เพิ่ม', text) # ลบ เ หน้าคำว่าเพิ่ม (เช่น เเพิ่มเติม -> เพิ่มเติม)
+    # 4. แก้ปัญหา "เเ" ซ้ำซ้อน (ยุบเฉพาะเมื่อมันมา 2 ตัวติดกันจริงๆ)
+    # ใช้ Regex ที่ระบุว่าถ้าเจอ เ ติดกัน 2 ตัว ให้เหลือ 1 ตัว
+    text = re.sub(r'เ{2,}', 'เ', text)
+    text = re.sub(r'แ{2,}', 'แ', text)
     
-    # ยุบสระเบิ้ลทั่วไป
-    text = re.sub(r'เ+', 'เ', text)
-    text = re.sub(r'แ+', 'แ', text)
+    # 5. ซ่อมคำเฉพาะ (ป้องกันกรณี เ หายในคำว่า เพิ่มเติม)
+    # ถ้าเจอ 'พิ่มเติม' ที่ไม่มี 'เ' นำหน้า ให้เติม 'เ' กลับไปให้ถูกต้อง
+    if 'พิ่มเติม' in text and 'เพิ่ม' not in text:
+        text = text.replace('พิ่มเติม', 'เพิ่มเติม')
 
-    # 7. ซ่อมคำเฉพาะที่สะกดผิด (กลุ่ม ศึกษา, วิทยาศาสตร์, เพิ่มเติม)
+    # 6. ลบตัวการันต์ที่เบิ้ลหรือผิดที่
+    text = text.replace('เ์', '์')
+    
+    # 7. คลังคำซ่อมแซม (Corrections)
     corrections = {
         'ศกึ': 'ศึก',
         'วิทยาศาตร์': 'วิทยาศาสตร์',
@@ -67,8 +65,8 @@ def universal_thai_cleaner(text):
 
     return text.strip()
 
-st.set_page_config(page_title="ระบบดึงข้อมูลอัจฉริยะ v42", layout="wide")
-st.title("📂 ระบบดึงข้อมูล (กำจัดสระ เเ ซ้ำซ้อนขั้นเด็ดขาด)")
+st.set_page_config(page_title="ระบบดึงข้อมูลอัจฉริยะ v43", layout="wide")
+st.title("📂 ระบบดึงข้อมูล (ซ่อมสระ เ หาย และยุบสระ เเ)")
 
 uploaded_file = st.file_uploader("เลือกไฟล์ PDF", type="pdf")
 
@@ -119,4 +117,4 @@ if uploaded_file is not None:
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             df.to_excel(writer, index=False)
-        st.download_button("📥 ดาวน์โหลดไฟล์ Excel", output.getvalue(), "student_report_v42.xlsx")
+        st.download_button("📥 ดาวน์โหลดไฟล์ Excel", output.getvalue(), "student_report_v43.xlsx")
