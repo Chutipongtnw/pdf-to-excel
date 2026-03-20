@@ -3,6 +3,7 @@ import pdfplumber
 import pandas as pd
 import re
 import io
+import unicodedata
 
 def universal_thai_cleaner(text):
     if not text: return "N/A"
@@ -12,32 +13,36 @@ def universal_thai_cleaner(text):
         if divider in text:
             text = text.split(divider)[0]
 
-    # 2. แปลงรหัส Unicode ที่มีรูปร่างเหมือน "สระเอ" และ "วรรณยุกต์" ให้เป็นรหัสมาตรฐาน
-    # ไฟล์ PDF ของคุณมีรหัส \uf712, \uf713, \uf705 ที่หน้าตาเหมือน เ และ วรรณยุกต์
+    # 2. จัดระเบียบ Unicode (Normalization) เพื่อให้รหัสตัวอักษรที่หน้าตาเหมือนกันกลายเป็นรหัสเดียวกัน
+    text = unicodedata.normalize('NFKC', text)
+
+    # 3. ล้างรหัส Unicode กลุ่มพิเศษที่มักแฝงมาใน PDF ระบบโรงเรียน
     unicode_map = {
         '\uf701': 'ิ', '\uf702': 'ี', '\uf703': 'ึ', '\uf704': 'ื',
         '\uf705': '่', '\uf706': '้', '\uf70e': '์', '\uf710': '่',
         '\uf711': '้', '\uf714': '์', '\uf71a': '์', '\uf709': '',
-        '\uf712': 'เ', '\uf713': 'เ', # บังคับรหัสพิเศษให้เป็น 'เ' มาตรฐาน
+        '\uf712': 'เ', '\uf713': 'เ',
         'อ': 'อ่าน', 'ข': 'ข้อ', 'ค': 'ค้น', 'ต': 'ต่อ', 'นํ': 'นำ', 'ผ': 'แผ่น'
     }
     for char, corrected in unicode_map.items():
         text = text.replace(char, corrected)
 
-    # 3. ลบอักขระขยะ Unicode ล่องหน
+    # 4. กำจัดอักขระขยะ Unicode ล่องหน
     text = re.sub(r'[\uf000-\uf0ff]', '', text)
 
-    # 4. ลบช่องว่างทั้งหมดเพื่อให้ตัวอักษรมาชนกัน
+    # 5. ลบช่องว่างทั้งหมดเพื่อให้ตัวอักษรมาชนกันสนิท
     text = re.sub(r'\s+', '', text)
 
-    # 5. จัดการ "เ" ที่เบิ้ล (ไม้ตาย: ยุบ 'เ' ทุกตัวที่ติดกันให้เหลือตัวเดียว)
+    # 6. แก้ไขปัญหา "เเ" (สระเอสองตัว) แบบเจาะจงลำดับ
+    # ไล่เช็คทุกรูปแบบที่อาจเกิดขึ้นได้
+    text = text.replace('เเ', 'เ').replace('เเ', 'เ') # แทนที่ซ้ำๆ
+    text = text.replace('เ้', '้').replace('เ์', '์') # ลบสระเอที่ติดมากับวรรณยุกต์ใน 'เพิ่มเติม' หรือ 'ศาสตร์'
+    
+    # 7. ใช้ Regex ยุบสระที่เบิ้ล (เ+ แ+ ะ+)
     text = re.sub(r'เ+', 'เ', text)
     text = re.sub(r'แ+', 'แ', text)
-    
-    # 6. ลบ "เ" ที่ไปโผล่ผิดตำแหน่ง (เช่น หน้าการันต์ 'เ์' หรือหลังพยัญชนะที่สะกดผิด)
-    text = text.replace('เ์', '์').replace('เ์', '์') 
-    
-    # 7. ซ่อมคำเฉพาะที่สะกดผิด (กลุ่ม ศึกษา, วิทยาศาสตร์, เพิ่มเติม)
+
+    # 8. ซ่อมคำเฉพาะที่สะกดผิด (กลุ่ม ศึกษา, วิทยาศาสตร์, เพิ่มเติม)
     corrections = {
         'ศกึ': 'ศึก',
         'วิทยาศาตร์': 'วิทยาศาสตร์',
@@ -48,21 +53,22 @@ def universal_thai_cleaner(text):
         'ฟิสิกส': 'ฟิสิกส์',
         'คณิตศาสตร': 'คณิตศาสตร์',
         'ผลติ': 'ผลิต',
+        'ข้อมููล': 'ข้อมูล',
         'คาสตร์': 'ศาสตร์'
     }
     for wrong, right in corrections.items():
         text = text.replace(wrong, right)
 
-    # 8. ยุบวรรณยุกต์ซ้ำครั้งสุดท้าย
+    # 9. ยุบวรรณยุกต์ซ้ำครั้งสุดท้าย
     text = re.sub(r'([่้๊๋์])\1+', r'\1', text)
     
-    # 9. เว้นช่องว่าง 1 เคาะ หน้าตัวเลขท้ายชื่อวิชา
+    # 10. เว้นช่องว่าง 1 เคาะ หน้าตัวเลขท้ายชื่อวิชา
     text = re.sub(r'(\d+)$', r' \1', text)
 
     return text.strip()
 
-st.set_page_config(page_title="ระบบดึงข้อมูลอัจฉริยะ v40", layout="wide")
-st.title("📂 ระบบดึงข้อมูล (ลบสระ เเ ซ้ำซ้อนและวรรณยุกต์ผิดตำแหน่ง)")
+st.set_page_config(page_title="ระบบดึงข้อมูลอัจฉริยะ v41", layout="wide")
+st.title("📂 ระบบดึงข้อมูล (ถอนรากถอนโคน สระ เเ เบิ้ล)")
 
 uploaded_file = st.file_uploader("เลือกไฟล์ PDF", type="pdf")
 
@@ -70,8 +76,8 @@ if uploaded_file is not None:
     all_data = []
     with pdfplumber.open(uploaded_file) as pdf:
         progress_bar = st.progress(0)
-        pages = pdf.pages
-        for i, page in enumerate(pages):
+        total_p = len(pdf.pages)
+        for i, page in enumerate(pdf.pages):
             raw_text = page.extract_text() or ""
             
             # ดึงรหัสครู
@@ -103,7 +109,7 @@ if uploaded_file is not None:
                                 "เกรดปกติ": str(row[7]).replace('\n', '').strip() if row[7] else "",
                                 "รหัสครู": teacher_id
                             })
-            progress_bar.progress((i + 1) / len(pages))
+            progress_bar.progress((i + 1) / total_p)
 
     if all_data:
         df = pd.DataFrame(all_data).drop_duplicates()
@@ -113,4 +119,4 @@ if uploaded_file is not None:
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             df.to_excel(writer, index=False)
-        st.download_button("📥 ดาวน์โหลดไฟล์ Excel", output.getvalue(), "student_report_v40.xlsx")
+        st.download_button("📥 ดาวน์โหลดไฟล์ Excel", output.getvalue(), "student_report_v41.xlsx")
