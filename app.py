@@ -1,19 +1,26 @@
 import streamlit as st
 import pdfplumber
 import pandas as pd
-import easyocr
-import numpy as np
-from PIL import Image
+import re
 import io
 
-# โหลด Reader ของ EasyOCR (รองรับภาษาไทยและอังกฤษ)
-@st.cache_resource
-def load_ocr():
-    return easyocr.Reader(['th', 'en'])
+# ฟังก์ชันถอดรหัสสี่เหลี่ยม (Mapping Table)
+# เนื่องจากคุณบอกว่าก๊อปไปวาง Word แล้วเพี้ยน เราจะดึงค่า Unicode ดิบมาแปลง
+def decode_custom_font(text):
+    if not text: return ""
+    # ตารางแปลงค่า (ตัวอย่างการแมปรหัสที่มักพบใน PDF โรงเรียน)
+    # หากรันแล้วเลขยังไม่ตรง เราจะปรับตารางนี้ตามค่าจริงที่ดึงได้
+    mapping = {
+        '􀀢': '1', '􀀣': '2', '􀀤': '3', '􀀥': '4', '􀀦': '5',
+        '􀀧': '6', '􀀨': '7', '􀀩': '8', '􀀪': '9', '􀀡': '0',
+        '􀀞': '2', '􀀠': '6' # เพิ่มตามที่คุณแจ้ง (􀀨􀀞􀀠) -> (726)
+    }
+    for char, digit in mapping.items():
+        text = text.replace(char, digit)
+    # ลบตัวอักษรพิเศษอื่นๆ ที่เหลือ
+    return "".join(char for char in text if char.isprintable() or char in '0123456789')
 
-reader = load_ocr()
-
-st.title("📂 ระบบดึงข้อมูลด้วย OCR (แก้ปัญหาตัวเลขสี่เหลี่ยม)")
+st.title("📂 ระบบดึงข้อมูลผลการเรียน (แก้ไขตัวเลขสี่เหลี่ยม)")
 
 uploaded_file = st.file_uploader("เลือกไฟล์ PDF", type="pdf")
 
@@ -22,38 +29,33 @@ if uploaded_file is not None:
     with pdfplumber.open(uploaded_file) as pdf:
         progress_bar = st.progress(0)
         for i, page in enumerate(pdf.pages):
-            # แปลงหน้า PDF เป็นรูปภาพเพื่อใช้ OCR "สแกน" แทนการ "อ่านรหัส"
-            img = page.to_image(resolution=300).original
-            img_np = np.array(img)
-            
-            # ใช้ OCR อ่านข้อความทั้งหมดจากภาพ
-            results = reader.readtext(img_np)
-            
-            # ดึงรหัสครู (หาตัวเลข 3 หลักในวงเล็บ)
+            # 1. ดึงรหัสครู (ดึงแบบ Raw เพื่อให้ติดรหัสสี่เหลี่ยมมาแปลง)
+            raw_text = page.extract_text()
             teacher_id = "N/A"
-            for (bbox, text, prob) in results:
-                match = re.search(r'\((\d{3})\)', text)
-                if match:
-                    teacher_id = match.group(1)
-                    break
+            # หาข้อความในวงเล็บ
+            found_id = re.search(r'\((.*?)\)', raw_text)
+            if found_id:
+                teacher_id = decode_custom_font(found_id.group(1))
 
-            # ดึงตาราง (ใช้พิกัดเดิมจาก pdfplumber แต่ค่าไหนที่เป็นสี่เหลี่ยม เราจะใช้ OCR ช่วย)
+            # 2. ดึงตาราง
             table = page.extract_table()
             if table:
                 for row in table:
-                    if row and len(row) >= 8:
+                    if row and len(row) > 7:
                         student_id = str(row[1]).replace('\n', '').strip()
+                        # เลขประจำตัวถ้าเป็นสี่เหลี่ยมต้องแปลงก่อนเช็ค isdigit
+                        student_id = decode_custom_font(student_id)
+                        
                         if student_id.isdigit() and len(student_id) == 5:
-                            
-                            # หากรหัสวิชามีปัญหา (อ่านได้แค่ 'ท' หรือมีสี่เหลี่ยม)
-                            # เราจะใช้ค่าที่ได้จาก OCR ในตำแหน่งที่ใกล้เคียงแทน
-                            subject_id = str(row[3]).replace('\n', '').strip()
+                            # แปลงรหัสวิชาที่มีสี่เหลี่ยม
+                            subject_raw = str(row[3]).replace('\n', '').strip()
+                            subject_id = decode_custom_font(subject_raw)
                             
                             all_data.append({
                                 "เลขประจำตัวนักเรียน": student_id,
-                                "รหัสวิชา": subject_id, # หรือใช้ logic mapping จาก OCR
-                                "ระดับชั้น": row[4],
-                                "เกรดปกติ": row[7],
+                                "รหัสวิชา": subject_id,
+                                "ระดับชั้น": row[4].replace('\n', ' '),
+                                "เกรดปกติ": row[7].replace('\n', ' '),
                                 "รหัสครู": teacher_id
                             })
             progress_bar.progress((i + 1) / len(pdf.pages))
@@ -61,4 +63,8 @@ if uploaded_file is not None:
     if all_data:
         df = pd.DataFrame(all_data)
         st.dataframe(df)
-        # (ปุ่มดาวน์โหลด Excel เหมือนเดิม)
+        
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, index=False)
+        st.download_button("📥 ดาวน์โหลด Excel", output.getvalue(), "report.xlsx")
