@@ -84,8 +84,8 @@ def universal_thai_cleaner(text):
     return text.strip()
 
 # ส่วนที่เหลือของ Streamlit เหมือนเดิมทั้งหมด
-st.set_page_config(page_title="ระบบดึงข้อมูลอัจฉริยะ v53", layout="wide")
-st.title("📂 ระบบดึงข้อมูล (แก้ไข 'อ่านาน' -> 'อ่าน')")
+st.set_page_config(page_title="ระบบแปลงไฟล์ PDF to Excel เฉพาะไฟล์ผลการเรียนบกพร่อง รายครู ธนว เท่านั้น", layout="wide")
+st.title("📂 ระบบแปลงไฟล์ PDF to Excel เฉพาะไฟล์ผลการเรียนบกพร่อง รายครู ธนว เท่านั้น")
 
 uploaded_file = st.file_uploader("เลือกไฟล์ PDF เพื่อรัน v53", type="pdf")
 
