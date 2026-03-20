@@ -4,14 +4,13 @@ import pandas as pd
 import re
 import io
 
-# เปลี่ยนชื่อฟังก์ชันให้ตรงกันทั้งหมด
 def clean_val(text):
     if text is None: return ""
-    # ลบอักขระควบคุมแต่รักษาไทย อังกฤษ เลข และช่องว่าง
+    # ลบอักขระขยะแต่รักษาไทย อังกฤษ เลข และช่องว่าง
     return "".join(char for char in str(text) if char.isprintable()).strip()
 
-st.set_page_config(page_title="ระบบแปลงไฟล์ PDF v9", layout="wide")
-st.title("📂 ระบบดึงข้อมูลผลการเรียน v9 (ธาตุนารายณ์วิทยา)")
+st.set_page_config(page_title="ระบบแปลงไฟล์ PDF v10", layout="wide")
+st.title("📂 ระบบดึงข้อมูลผลการเรียน v10 (Deep Extraction)")
 
 uploaded_file = st.file_uploader("เลือกไฟล์ PDF", type="pdf")
 
@@ -20,60 +19,69 @@ if uploaded_file is not None:
     
     with pdfplumber.open(uploaded_file) as pdf:
         progress_bar = st.progress(0)
-        num_pages = len(pdf.pages)
         
         for i, page in enumerate(pdf.pages):
-            # 1. หารหัสครูจากข้อความดิบ (หาตัวเลขในวงเล็บ)
-            full_text = page.extract_text() or ""
-            teacher_match = re.search(r'\((\d+)\)', full_text)
-            teacher_id = teacher_match.group(1) if teacher_match else "N/A"
-            
-            # 2. ตั้งค่าการดึงตารางแบบเน้นเส้น (เหมาะกับตารางที่มีเส้นขอบชัดเจน)
-            table_settings = {
-                "vertical_strategy": "lines",
+            # 1. หารหัสครู: สแกนข้อความดิบหาตัวเลขในวงเล็บ (126)
+            raw_text = page.extract_text() or ""
+            teacher_id = "N/A"
+            teacher_match = re.search(r'\((\d+)\)', raw_text)
+            if teacher_match:
+                teacher_id = teacher_match.group(1)
+
+            # 2. ดึงตารางโดยใช้โหมด 'text' เพื่อบังคับให้อ่านตัวเลขที่ฟอนต์มีปัญหา
+            # และปรับพิกัดคอลัมน์ให้ตรงกับไฟล์ของโรงเรียนคุณ
+            table = page.extract_table({
+                "vertical_strategy": "text",
                 "horizontal_strategy": "lines",
-                "snap_tolerance": 3,
-            }
-            
-            table = page.extract_table(table_settings)
+                "snap_tolerance": 4,
+                "text_x_tolerance": 2
+            })
             
             if table:
                 for row in table:
-                    # ตารางโรงเรียนคุณมีประมาณ 9 คอลัมน์
+                    # ตรวจสอบว่าแถวนี้มีข้อมูลนักเรียนหรือไม่ (เช็คคอลัมน์เลขประจำตัว)
                     if row and len(row) >= 8:
-                        # ลบช่องว่างและขึ้นบรรทัดใหม่ในเลขประจำตัว
+                        # พยายามดึงเลขประจำตัวจาก index 1
                         student_id = str(row[1]).replace('\n', '').replace(' ', '').strip()
                         
-                        # กรองเฉพาะแถวที่มีเลขประจำตัว 5 หลัก
+                        # ถ้าเจอเลขประจำตัว 5 หลัก ให้เริ่มเก็บข้อมูล
                         if student_id.isdigit() and len(student_id) == 5:
-                            # ดึงข้อมูลตามลำดับคอลัมน์จริง
-                            # [1]=เลขประจำตัว, [3]=รหัสวิชา, [4]=ระดับชั้น, [8]=เกรดปกติ (หรือ [7])
+                            
+                            # รหัสวิชา: รวมข้อความทุกบรรทัดในช่อง เพื่อให้ ท + 22101 มาครบ
+                            subject_id = clean_val(row[3]).replace(' ', '')
+                            
+                            # ระดับชั้น: index 4
+                            level = clean_val(row[4])
+                            
+                            # เกรดปกติ: ในไฟล์ของคุณมักอยู่ index 7 หรือ 8 (ลองดึงจากตัวท้ายๆ)
+                            # เราจะเช็คค่าจากคอลัมน์ที่คาดว่าเป็นเกรด
+                            grade = clean_val(row[7]) if len(row) == 8 else clean_val(row[8])
+
                             all_data.append({
                                 "เลขประจำตัวนักเรียน": student_id,
-                                "รหัสวิชา": clean_val(row[3]),
-                                "ระดับชั้น": clean_val(row[4]),
-                                "เกรดปกติ": clean_val(row[8]) if len(row) > 8 else clean_val(row[7]),
+                                "รหัสวิชา": subject_id,
+                                "ระดับชั้น": level,
+                                "เกรดปกติ": grade,
                                 "รหัสครู": teacher_id
                             })
             
-            progress_bar.progress((i + 1) / num_pages)
+            progress_bar.progress((i + 1) / len(pdf.pages))
 
-    # แสดงผลถ้ามีข้อมูล
     if all_data:
         df = pd.DataFrame(all_data)
         st.success(f"ดึงข้อมูลสำเร็จ! พบทั้งหมด {len(df)} รายการ")
         st.dataframe(df, use_container_width=True)
         
-        # เตรียมไฟล์ Excel
         output = io.BytesIO()
+        # ใช้ xlsxwriter เพื่อรองรับอักขระพิเศษ
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            df.to_excel(writer, index=False, sheet_name='Data')
+            df.to_excel(writer, index=False, sheet_name='StudentData')
         
         st.download_button(
             label="📥 ดาวน์โหลดไฟล์ Excel",
             data=output.getvalue(),
-            file_name="student_grades_final.xlsx",
+            file_name="student_grades_v10.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     else:
-        st.warning("ไม่พบข้อมูลในตาราง กรุณาตรวจสอบว่าไฟล์ PDF มีตารางและเป็น Native PDF")
+        st.warning("ไม่พบข้อมูล กรุณาลองอัปโหลดไฟล์ใหม่อีกครั้ง")
