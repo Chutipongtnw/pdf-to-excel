@@ -7,37 +7,41 @@ import io
 def clean_subject_name(text):
     if not text: return "N/A"
     
-    # 1. ตัดส่วน 'จำนวน' และ 'หน่วยการเรียน' ออกทันที (ใช้ Regex ครอบคลุมทุกสระอำ)
+    # 1. ตัดส่วน "จำนวน/จํานวน...หน่วยการเรียน" ออกให้เด็ดขาด
+    # ใช้ Regex ที่ดักจับทั้ง 'ำ' และ 'า' + 'นฤคหิต' รวมถึงช่องว่างรอบๆ
     text = re.split(r'\s*จ[ำา]นวน.*', text)[0]
+    text = re.split(r'\s*จ\s*[ำา]\s*นวน.*', text)[0] # เผื่อช่องว่างกลางคำ
     
-    # 2. แก้ไขรหัส Unicode พิเศษที่ PDF มักใช้แทนสระและวรรณยุกต์ไทย (ป้องกันสี่เหลี่ยม)
-    # ชุดรหัสเหล่านี้คือต้นเหตุที่ทำให้ "ฟสกิ ส" หรือ "ศาสตร" อ่านไม่ได้
+    # 2. แก้ไขรหัส Unicode พิเศษ (สระ/วรรณยุกต์ไทยที่มักกลายเป็นสี่เหลี่ยม)
+    # ครอบคลุมชุดรหัสจาก PDF ระบบโรงเรียนที่ทำให้ "ฟิสิกส์" และ "นาฎศิลป์" เพี้ยน
     unicode_map = {
         '\uf701': 'ิ', '\uf702': 'ี', '\uf703': 'ึ', '\uf704': 'ื',
         '\uf705': '่', '\uf706': '้', '\uf707': '๊', '\uf708': '๋',
         '\uf70a': '่', '\uf70b': '้', '\uf70c': '๊', '\uf70d': '๋',
         '\uf70e': '์', '\uf710': '่', '\uf711': '้', '\uf712': '๊',
         '\uf713': '๋', '\uf714': '์', '\uf715': 'ิ', '\uf716': 'ุ',
-        '\uf717': 'ู', '\uf718': 'ั', '\uf719': '็', '\uf71a': '์'
+        '\uf717': 'ู', '\uf718': 'ั', '\uf719': '็', '\uf71a': '์',
+        '\uf71b': '์', '\uf71c': '์', 'เ ์': '์', 'เ': '์', 'ร ': 'ร์'
     }
     for char, corrected in unicode_map.items():
         text = text.replace(char, corrected)
+
+    # 3. ซ่อมคำเฉพาะที่คุณแจ้งว่าเพี้ยน (เช่น สระย้ายที่/ไม้เอกหาย)
+    text = text.replace('ศลิป', 'ศิลป์').replace('หนวย', 'หน่วย').replace('ฟิสกิ', 'ฟิสิก')
+    text = text.replace('ฟสิกส', 'ฟิสิกส์').replace('ศาสตร', 'ศาสตร์').replace('ศาสตร ', 'ศาสตร์')
+    text = text.replace('นาฎศิลป', 'นาฏศิลป์').replace('ผลิตภัณฑ', 'ผลิตภัณฑ์')
+    text = text.replace('สังคมศกึษา', 'สังคมศึกษา')
     
-    # 3. ลบอักขระขยะ Unicode อื่นๆ ที่ยังเหลือ (สี่เหลี่ยมล่องหน)
+    # 4. ลบอักขระขยะ Unicode ที่ยังเหลือ (ตัวต้นเหตุสี่เหลี่ยม)
     text = re.sub(r'[\uf000-\uf0ff]', '', text)
     
-    # 4. ซ่อมคำเฉพาะที่มักแตกออกจากกัน
-    text = text.replace('ศาสตร ', 'ศาสตร์').replace('ศาสตร', 'ศาสตร์')
-    text = text.replace('ฟสกิ ส', 'ฟิสิกส์').replace('ฟสิกส', 'ฟิสิกส์')
-    text = text.replace('ผลิตภัณฑ', 'ผลิตภัณฑ์').replace('สิกส', 'สิกส์')
-    
-    # 5. ลบช่องว่างส่วนเกินเพื่อให้ข้อความชิดกันตามที่ต้องการ
-    text = re.sub(r'\s+', ' ', text) # ให้เหลือ 1 เคาะมาตรฐานก่อน
+    # 5. ลบช่องว่างที่ซ้ำซ้อนออก
+    text = " ".join(text.split())
     
     return text.strip()
 
-st.set_page_config(page_title="ระบบดึงข้อมูลสมบูรณ์ v28", layout="wide")
-st.title("📂 ระบบดึงข้อมูลผลการเรียน (แก้ไขชื่อวิชาและลบหน่วยกิต)")
+st.set_page_config(page_title="ระบบดึงข้อมูลสมบูรณ์ v29", layout="wide")
+st.title("📂 ระบบดึงข้อมูลผลการเรียน (ล้างชื่อวิชา & ตัดหน่วยกิต 100%)")
 
 uploaded_file = st.file_uploader("เลือกไฟล์ PDF", type="pdf")
 
@@ -48,11 +52,11 @@ if uploaded_file is not None:
         for i, page in enumerate(pdf.pages):
             raw_text = page.extract_text() or ""
             
-            # ดึงรหัสครู [cite: 2, 8, 14, 20]
+            # ดึงรหัสครู (เลขในวงเล็บ) [cite: 2, 8]
             teacher_match = re.search(r'\((\d+)\)', raw_text)
             teacher_id = teacher_match.group(1) if teacher_match else "N/A"
             
-            # ดึงชื่อวิชา [cite: 5, 12, 18, 24]
+            # ดึงชื่อวิชาจากบรรทัดท้ายหน้า 
             subject_name = "N/A"
             for line in raw_text.split('\n'):
                 if "ชื่อวิชา" in line:
@@ -61,12 +65,13 @@ if uploaded_file is not None:
                         subject_name = clean_subject_name(parts[-1])
                     break
 
-            # ดึงตารางข้อมูล [cite: 4, 10, 16, 21]
+            # ดึงข้อมูลจากตาราง 
             table = page.extract_table()
             if table:
                 for row in table:
                     if row and len(row) >= 8:
                         student_id = str(row[1]).replace('\n', '').strip()
+                        # กรองเฉพาะเลขประจำตัว 5 หลัก 
                         if student_id.isdigit() and len(student_id) == 5:
                             all_data.append({
                                 "เลขประจำตัวนักเรียน": student_id,
@@ -79,11 +84,11 @@ if uploaded_file is not None:
             progress_bar.progress((i + 1) / len(pdf.pages))
 
     if all_data:
-        df = pd.DataFrame(all_data)
+        df = pd.DataFrame(all_data).drop_duplicates()
         st.success(f"ดึงข้อมูลสำเร็จ! พบ {len(df)} รายการ")
         st.dataframe(df, use_container_width=True)
         
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             df.to_excel(writer, index=False)
-        st.download_button("📥 ดาวน์โหลด Excel", output.getvalue(), "report_v28.xlsx")
+        st.download_button("📥 ดาวน์โหลด Excel", output.getvalue(), "report_v29.xlsx")
