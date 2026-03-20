@@ -13,8 +13,10 @@ def universal_thai_cleaner(text):
         if divider in text:
             text = text.split(divider)[0]
 
-    # 2. Normalization และแปลงรหัส Unicode พิเศษ
+    # 2. Normalization เพื่อล้างรหัสตัวอักษรให้เป็นมาตรฐาน
     text = unicodedata.normalize('NFKC', text)
+    
+    # 3. แปลงรหัส Unicode พิเศษที่มักแฝงมาใน PDF
     unicode_map = {
         '\uf701': 'ิ', '\uf702': 'ี', '\uf703': 'ึ', '\uf704': 'ื',
         '\uf705': '่', '\uf706': '้', '\uf70e': '์', '\uf710': '่',
@@ -25,24 +27,24 @@ def universal_thai_cleaner(text):
     for char, corrected in unicode_map.items():
         text = text.replace(char, corrected)
 
-    # 3. ลบอักขระขยะ Unicode (\uf000-\uf0ff) และลบช่องว่างทั้งหมดเพื่อให้ตัวอักษรชนกัน
+    # 4. ลบอักขระขยะ Unicode และช่องว่างทั้งหมด
     text = re.sub(r'[\uf000-\uf0ff]', '', text)
     text = re.sub(r'\s+', '', text)
 
-    # 4. แก้ปัญหา "เเ" ซ้ำซ้อน (ยุบเฉพาะเมื่อมันมา 2 ตัวติดกันจริงๆ)
-    # ใช้ Regex ที่ระบุว่าถ้าเจอ เ ติดกัน 2 ตัว ให้เหลือ 1 ตัว
+    # 5. แก้ไขปัญหา "นำา" (สระอาเกินหลังสระอำ) และ "อ่านาน"
+    text = text.replace('นำา', 'นำ')
+    text = text.replace('ทำา', 'ทำ')
+    text = text.replace('อ่านาน', 'อ่าน')
+    
+    # 6. ยุบสระที่เบิ้ล (เเ, แแ, าา)
     text = re.sub(r'เ{2,}', 'เ', text)
     text = re.sub(r'แ{2,}', 'แ', text)
+    text = re.sub(r'า{2,}', 'า', text) # ยุบสระอาซ้ำ
     
-    # 5. ซ่อมคำเฉพาะ (ป้องกันกรณี เ หายในคำว่า เพิ่มเติม)
-    # ถ้าเจอ 'พิ่มเติม' ที่ไม่มี 'เ' นำหน้า ให้เติม 'เ' กลับไปให้ถูกต้อง
+    # 7. ซ่อมคำเฉพาะ (กลุ่ม ศึกษา, เพิ่มเติม, วิทยาศาสตร์)
     if 'พิ่มเติม' in text and 'เพิ่ม' not in text:
         text = text.replace('พิ่มเติม', 'เพิ่มเติม')
 
-    # 6. ลบตัวการันต์ที่เบิ้ลหรือผิดที่
-    text = text.replace('เ์', '์')
-    
-    # 7. คลังคำซ่อมแซม (Corrections)
     corrections = {
         'ศกึ': 'ศึก',
         'วิทยาศาตร์': 'วิทยาศาสตร์',
@@ -65,8 +67,8 @@ def universal_thai_cleaner(text):
 
     return text.strip()
 
-st.set_page_config(page_title="ระบบดึงข้อมูลอัจฉริยะ v43", layout="wide")
-st.title("📂 ระบบดึงข้อมูล (ซ่อมสระ เ หาย และยุบสระ เเ)")
+st.set_page_config(page_title="ระบบดึงข้อมูลอัจฉริยะ v45", layout="wide")
+st.title("📂 ระบบดึงข้อมูล (แก้ไข 'นำา' และสระเบิ้ล)")
 
 uploaded_file = st.file_uploader("เลือกไฟล์ PDF", type="pdf")
 
@@ -78,12 +80,10 @@ if uploaded_file is not None:
         for i, page in enumerate(pdf.pages):
             raw_text = page.extract_text() or ""
             
-            # ดึงรหัสครู
             teacher_id = "N/A"
             t_match = re.search(r'\((\d+)\)', raw_text)
             if t_match: teacher_id = t_match.group(1)
 
-            # ดึงชื่อวิชา
             subject_name = "N/A"
             for line in raw_text.split('\n'):
                 if "ชื่อวิชา" in line:
@@ -92,7 +92,6 @@ if uploaded_file is not None:
                         subject_name = universal_thai_cleaner(parts[-1])
                     break
 
-            # ดึงตาราง
             table = page.extract_table()
             if table:
                 for row in table:
@@ -117,4 +116,4 @@ if uploaded_file is not None:
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             df.to_excel(writer, index=False)
-        st.download_button("📥 ดาวน์โหลดไฟล์ Excel", output.getvalue(), "student_report_v43.xlsx")
+        st.download_button("📥 ดาวน์โหลดไฟล์ Excel", output.getvalue(), "student_report_v45.xlsx")
