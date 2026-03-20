@@ -6,62 +6,63 @@ import io
 
 def clean_text(text):
     if not text: return ""
-    # ลบอักขระขยะแต่เก็บไทย อังกฤษ เลข และช่องว่าง [cite: 4]
     return "".join(char for char in str(text) if char.isprintable())
 
 st.set_page_config(page_title="ระบบแปลงไฟล์ PDF (ธาตุนารายณ์วิทยา)", layout="wide")
-st.title("📂 ระบบดึงข้อมูลผลการเรียนบกพร่อง v5")
+st.title("📂 ระบบดึงข้อมูลผลการเรียนบกพร่อง v6")
 
 uploaded_file = st.file_uploader("เลือกไฟล์ PDF", type="pdf")
 
 if uploaded_file is not None:
     all_data = []
     
-    # ใช้การตั้งค่าความละเอียดสูงเพื่อป้องกันตัวเลขหาย 
     with pdfplumber.open(uploaded_file) as pdf:
         progress_bar = st.progress(0)
         for i, page in enumerate(pdf.pages):
-            # 1. หารหัสครู (Teacher ID) โดยหาจากคำว่า "ครู" [cite: 2, 10, 17]
+            # 1. หารหัสครู (Teacher ID)
             words = page.extract_words()
             teacher_id = "N/A"
             for idx, w in enumerate(words):
                 if "ครู" in w['text']:
-                    # ค้นหาเลขในวงเล็บใน 15 คำถัดไป [cite: 2, 11, 17]
                     for next_w in words[idx+1 : idx+15]:
                         match = re.search(r'\((\d+)\)', next_w['text'])
                         if match:
-                            teacher_id = match.group(1) [cite: 2, 11, 17]
+                            teacher_id = match.group(1)
                             break
                     if teacher_id != "N/A": break
 
-            # 2. ดึงตารางโดยใช้ค่าพื้นฐานที่เสถียรที่สุด
-            # แต่เพิ่มการจัดการข้อความในช่องให้รวมกัน (join_lines) 
+            # 2. ตั้งค่าการดึงตาราง (Table Settings)
+            # ปรับเพิ่มความแม่นยำในการตรวจจับข้อความที่แยกบรรทัดกันในช่องเดียว
             table_settings = {
-                "vertical_strategy": "lines", 
+                "vertical_strategy": "lines",
                 "horizontal_strategy": "lines",
                 "snap_tolerance": 3,
-                "join_tolerated_lines": 3
+                "text_x_tolerance": 2,
+                "text_y_tolerance": 2
             }
             
             table = page.extract_table(table_settings)
             
             if table:
                 for row in table:
-                    # ตรวจสอบเลขประจำตัวนักเรียน 5 หลัก (มักอยู่คอลัมน์ index 1) [cite: 4, 12, 19]
+                    # ตรวจสอบจำนวนคอลัมน์และเลขประจำตัว 5 หลัก
                     if row and len(row) > 7:
-                        student_id = str(row[1]).replace('\n', '').strip()
-                        if student_id.isdigit() and len(student_id) == 5: [cite: 4, 12]
-                            
-                            # ดึงรหัสวิชา (Index 3) และรวมข้อความที่แยกบรรทัด [cite: 4, 12, 19]
+                        # ลบช่องว่างและตัวอักษรแปลกๆ ออกก่อนเช็คตัวเลข
+                        student_id = str(row[1]).replace('\n', '').replace(' ', '').strip()
+                        
+                        if student_id.isdigit() and len(student_id) == 5:
+                            # ดึงรหัสวิชา (Index 3) - ใช้การล้างข้อมูลแบบถนอมตัวเลข
                             raw_subject = str(row[3]).replace('\n', '').strip()
-                            # ดึงเกรดปกติ (Index 7) 
+                            
+                            # ดึงระดับชั้น (Index 4) และ เกรดปกติ (Index 7)
+                            raw_level = str(row[4]).replace('\n', '').strip()
                             raw_grade = str(row[7]).replace('\n', '').strip()
                             
                             all_data.append({
                                 "เลขประจำตัวนักเรียน": student_id,
                                 "รหัสวิชา": raw_subject,
-                                "ระดับชั้น": clean_text(row[4]),
-                                "เกรดปกติ": raw_grade,
+                                "ระดับชั้น": clean_text(raw_level),
+                                "เกรดปกติ": clean_text(raw_grade),
                                 "รหัสครู": teacher_id
                             })
             
@@ -79,6 +80,6 @@ if uploaded_file is not None:
         st.download_button(
             label="📥 ดาวน์โหลดไฟล์ Excel",
             data=output.getvalue(),
-            file_name="student_grades_v5.xlsx",
+            file_name="student_grades_v6.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
