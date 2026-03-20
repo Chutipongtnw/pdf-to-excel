@@ -1,5 +1,6 @@
 streamlit
 pdfplumber
 pandas
-openpyxl
 xlsxwriter
+easyocr
+opencv-python-headless
