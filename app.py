@@ -4,18 +4,25 @@ import pandas as pd
 import re
 import io
 
-# ฟังก์ชันล้างอักขระขยะและช่องว่างที่ผิดปกติในชื่อวิชา
+# ฟังก์ชันล้างชื่อวิชาให้สะอาด 100%
 def clean_subject_name(text):
     if not text: return "N/A"
-    # ลบอักขระพิเศษ (เช่น \uf02d) ที่ทำให้เกิดช่องว่างกลางคำว่า "เพิ่มเติม"
-    text = text.replace('\uf02d', '').replace('\u200b', '')
-    # ตัดเอาเฉพาะส่วนก่อนคำว่า "จำนวน"
-    if "จำนวน" in text:
-        text = text.split("จำนวน")[0]
+    
+    # 1. ลบอักขระขยะที่ทำให้เกิดช่องว่าง (เช่น เ หรืออักขระ Unicode แปลกๆ)
+    # ลบ \uf02d และอักขระในช่วง Unicode ที่มักเป็นตัวปัญหาใน PDF ภาษาไทย
+    text = re.sub(r'[\uf000-\uf0ff]', '', text) 
+    text = text.replace('เ', '์').replace('สตรเ', 'สตร์เ')
+    
+    # 2. ตัดส่วนที่ขึ้นต้นด้วย "จำนวน" หรือ "จํานวน" ออกให้หมด
+    text = re.split(r'จ[ำา]นวน', text)[0]
+    
+    # 3. ลบช่องว่างที่ซ้ำซ้อน
+    text = " ".join(text.split())
+    
     return text.strip()
 
-st.set_page_config(page_title="ระบบแปลงไฟล์ PDF v19", layout="wide")
-st.title("📂 ระบบดึงข้อมูลผลการเรียน (แก้ไขชื่อวิชาและตัดหน่วยกิต)")
+st.set_page_config(page_title="ระบบแปลงไฟล์ PDF v20", layout="wide")
+st.title("📂 ระบบดึงข้อมูลผลการเรียน (ล้างชื่อวิชาสมบูรณ์แบบ)")
 
 uploaded_file = st.file_uploader("อัปโหลดไฟล์ PDF", type="pdf")
 
@@ -38,7 +45,7 @@ if uploaded_file is not None:
             lines = raw_text.split('\n')
             for line in lines:
                 if "ชื่อวิชา" in line:
-                    # ตัดคำว่า "ชื่อวิชา" ออก แล้วส่งเข้าฟังก์ชันล้างข้อมูล
+                    # แยกเอาเฉพาะส่วนหลังคำว่า "ชื่อวิชา"
                     raw_subject = line.split("ชื่อวิชา")[-1]
                     subject_name = clean_subject_name(raw_subject)
                     break
@@ -47,6 +54,7 @@ if uploaded_file is not None:
             table = page.extract_table()
             if table:
                 for row in table:
+                    # ตรวจสอบโครงสร้างแถว [1]=เลขประจำตัว, [3]=รหัสวิชา, [4]=ชั้น, [7]=เกรดปกติ
                     if row and len(row) >= 8:
                         student_id = str(row[1]).replace('\n', '').strip()
                         
@@ -69,15 +77,16 @@ if uploaded_file is not None:
         
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            df.to_excel(writer, index=False, sheet_name='Student_Grades')
-            worksheet = writer.sheets['Student_Grades']
+            df.to_excel(writer, index=False, sheet_name='Grades')
+            worksheet = writer.sheets['Grades']
+            # ปรับความกว้างคอลัมน์อัตโนมัติ
             for idx, col in enumerate(df.columns):
                 max_len = max(df[col].astype(str).map(len).max(), len(col)) + 2
                 worksheet.set_column(idx, idx, max_len)
         
         st.download_button(
-            label="📥 ดาวน์โหลดไฟล์ Excel (.xlsx)",
+            label="📥 ดาวน์โหลดไฟล์ Excel",
             data=output.getvalue(),
-            file_name="student_grades_clean_v19.xlsx",
+            file_name="student_grades_v20.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
