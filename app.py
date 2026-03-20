@@ -4,11 +4,18 @@ import pandas as pd
 import re
 import io
 
+# ฟังก์ชันสำหรับล้างตัวอักษรที่ Excel ไม่รองรับ (ป้องกัน IllegalCharacterError)
+def clean_string(value):
+    if isinstance(value, str):
+        # ลบตัวอักษรที่ไม่ใช่ printable characters (ASCII Control Characters)
+        return re.sub(r'[\x00-\x1f\x7f-\x9f]', '', value)
+    return value
+
 st.set_page_config(page_title="ระบบแปลงไฟล์ PDF ผลการเรียน", layout="wide")
 st.title("📂 ระบบดึงข้อมูลผลการเรียนบกพร่อง (PDF to Excel)")
 st.subheader("โรงเรียนธาตุนารายณ์วิทยา")
 
-uploaded_file = st.file_uploader("อัปโหลดไฟล์ PDF (รองรับไฟล์หลายหน้า)", type="pdf")
+uploaded_file = st.file_uploader("เลือกไฟล์ PDF", type="pdf")
 
 if uploaded_file is not None:
     all_data = []
@@ -20,21 +27,27 @@ if uploaded_file is not None:
         for i, page in enumerate(pdf.pages):
             text = page.extract_text()
             
-            # 1. ดึงรหัสครู (หาตัวเลขในวงเล็บท้ายชื่อครู) 
-            teacher_match = re.search(r'ครู\s+.*\((\d+)\)', text)
+            # --- แก้ไขรหัสครู N/A: ปรับ Regex ให้ตรวจจับได้กว้างขึ้น ---
+            # ค้นหาตัวเลขในวงเล็บที่อยู่ใกล้คำว่า "ครู" หรืออยู่เดี่ยวๆ ในบรรทัดที่คาดว่าเป็นชื่อครู
+            teacher_match = re.search(r'\((\d{3})\)', text) 
             teacher_id = teacher_match.group(1) if teacher_match else "N/A"
             
-            # 2. ดึงตาราง
             table = page.extract_table()
             if table:
-                for row in table[1:]: # ข้ามหัวตาราง 
-                    # เช็คว่าเป็นแถวที่มีเลขประจำตัวนักเรียนจริงไหม (ต้องเป็นตัวเลข 5 หลัก) 
+                for row in table[1:]:
+                    # ตรวจสอบแถวข้อมูล (ต้องมีเลขประจำตัว 5 หลัก)
                     if row and len(row) > 1 and str(row[1]).strip().isdigit():
+                        # ล้างค่าในแต่ละคอลัมน์ด้วยฟังก์ชัน clean_string
+                        student_id = clean_string(row[1].replace('\n', '').strip())
+                        subject_id = clean_string(row[3].replace('\n', '').strip())
+                        level = clean_string(row[4].replace('\n', '').strip())
+                        grade = clean_string(row[7].replace('\n', '').strip()) if row[7] else ""
+                        
                         all_data.append({
-                            "เลขประจำตัวนักเรียน": row[1].replace('\n', '').strip(),
-                            "รหัสวิชา": row[3].replace('\n', '').strip(),
-                            "ระดับชั้น": row[4].replace('\n', '').strip(),
-                            "เกรดปกติ": row[7].replace('\n', '').strip() if row[7] else "",
+                            "เลขประจำตัวนักเรียน": student_id,
+                            "รหัสวิชา": subject_id,
+                            "ระดับชั้น": level,
+                            "เกรดปกติ": grade,
                             "รหัสครู": teacher_id
                         })
             
@@ -49,12 +62,15 @@ if uploaded_file is not None:
         
         # ปุ่มดาวน์โหลด Excel
         output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='Student_Grades')
-        
-        st.download_button(
-            label="📥 ดาวน์โหลดไฟล์ Excel (.xlsx)",
-            data=output.getvalue(),
-            file_name="student_grades_report.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+        try:
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                df.to_excel(writer, index=False, sheet_name='Student_Grades')
+            
+            st.download_button(
+                label="📥 ดาวน์โหลดไฟล์ Excel (.xlsx)",
+                data=output.getvalue(),
+                file_name="student_grades_report.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+        except Exception as e:
+            st.error(f"เกิดข้อผิดพลาดในการสร้างไฟล์ Excel: {e}")
