@@ -8,48 +8,50 @@ import unicodedata
 def universal_thai_cleaner(text):
     if not text: return "N/A"
     
-    # 1. ตัดส่วน "จำนวน" ออกทันที
+    # 1. ตัดส่วน "จำนวน" หรือ "หน่วยกิต" ออกทันที
     for divider in ["จำนวน", "จํานวน", "หน่วย"]:
         if divider in text:
             text = text.split(divider)[0]
 
-    # 2. Normalization และแปลงรหัส Unicode พิเศษ
+    # 2. Normalization ขั้นสูงสุด (NFKC) เพื่อเคลียร์รหัสตัวอักษร
     text = unicodedata.normalize('NFKC', text)
+    
+    # 3. แปลงรหัส Unicode พิเศษ (Mapping ชุดใหญ่สำหรับ PDF โรงเรียน)
     unicode_map = {
         '\uf701': 'ิ', '\uf702': 'ี', '\uf703': 'ึ', '\uf704': 'ื',
         '\uf705': '่', '\uf706': '้', '\uf70e': '์', '\uf710': '่',
         '\uf711': '้', '\uf714': '์', '\uf71a': '์', '\uf709': '',
         '\uf712': 'เ', '\uf713': 'เ',
         'อ': 'อ่าน', 'ข': 'ข้อ', 'ค': 'ค้น', 'ต': 'ต่อ', 'นํ': 'นำ', 'ผ': 'แผ่น',
-        'ด': 'ด้' # ซ่อมคำว่า 'ด้วย' ที่ไม้โทมักหาย
+        'ด': 'ด้' 
     }
     for char, corrected in unicode_map.items():
         text = text.replace(char, corrected)
 
-    # 3. ลบอักขระขยะ Unicode และช่องว่างล่องหนทั้งหมด
+    # 4. ลบอักขระขยะ Unicode และช่องว่าง "ทุกชนิด" เพื่อให้ตัวอักษรชนกัน
     text = re.sub(r'[\u0000-\u001f\u007f-\u009f\uf000-\uf0ff\u200b\u00a0]', '', text)
     text = "".join(text.split())
 
-    # 4. แก้ปัญหาพยัญชนะเบิ้ลท้ายคำ (ข้ออ, แผ่นน, เขียนน)
-    text = text.replace('ข้ออ', 'ข้อ')
-    text = text.replace('แผ่นน', 'แผ่น')
+    # 5. แก้ไขปัญหาพยัญชนะเบิ้ลท้ายคำ (กลุ่มคำที่คุณแจ้งมาทั้งหมด)
+    text = text.replace('ต่ออ', 'ต่อ')     # แก้ "การตัดต่ออ" -> "การตัดต่อ"
+    text = text.replace('ข้ออ', 'ข้อ')     # แก้ "ข้อมูลล" -> "ข้อมูล"
+    text = text.replace('แผ่นน', 'แผ่น')   # แก้ "แผ่นนภาพ" -> "แผ่นภาพ"
     text = text.replace('เขียนน', 'เขียน')
     text = text.replace('อ่านาน', 'อ่าน')
     text = text.replace('นำา', 'นำ')
     text = text.replace('ฟิสกิ', 'ฟิสิก')
     text = text.replace('ฟ่ง', 'ฟัง')
     
-    # 5. ยุบสระที่เบิ้ล (เเ, แแ, าา)
+    # 6. ยุบสระที่เบิ้ล (เเ, แแ, าา, อีอี)
     for _ in range(2):
         text = text.replace('เเ', 'เ')
         text = text.replace('แแ', 'แ')
         text = text.replace('าา', 'า')
+        text = text.replace('ีี', 'ี') # แก้ วีดีโออ ที่สระอีเบิ้ล
     
-    # 6. ซ่อมคำเฉพาะและโครงสร้างที่ผิดเพี้ยน
+    # 7. ซ่อมคำเฉพาะและโครงสร้างที่ผิดเพี้ยน
     if 'พิ่มเติม' in text and 'เพิ่ม' not in text:
         text = text.replace('พิ่มเติม', 'เพิ่มเติม')
-    if 'ด้ว ย' in text or 'ดวย' in text: # กรณีไม้โทหายหรือกระโดด
-        text = text.replace('ดวย', 'ด้วย')
 
     corrections = {
         'ศกึ': 'ศึก',
@@ -61,23 +63,24 @@ def universal_thai_cleaner(text):
         'คณิตศาสตร': 'คณิตศาสตร์',
         'ผลติ': 'ผลิต',
         'คาสตร์': 'ศาสตร์',
+        'วดีโอ': 'วิดีโอ',
         'เ์': '์'
     }
     for wrong, right in corrections.items():
         text = text.replace(wrong, right)
 
-    # 7. ยุบวรรณยุกต์ซ้ำ
+    # 8. ยุบวรรณยุกต์ซ้ำ (์์, ่่, ้้)
     text = re.sub(r'([่้๊๋์])\1+', r'\1', text)
     
-    # 8. คืนค่าช่องว่าง 1 เคาะ หน้าตัวเลขท้ายชื่อวิชา
+    # 9. คืนค่าช่องว่าง 1 เคาะ หน้าตัวเลขท้ายชื่อวิชา
     text = re.sub(r'(\d+)$', r' \1', text)
 
     return text.strip()
 
-st.set_page_config(page_title="ระบบดึงข้อมูลอัจฉริยะ v49", layout="wide")
-st.title("📂 ระบบดึงข้อมูล (ซ่อม 'ข้ออ' และ 'ด้วย')")
+st.set_page_config(page_title="ระบบดึงข้อมูลอัจฉริยะ v50", layout="wide")
+st.title("📂 ระบบดึงข้อมูล (ซ่อม 'ต่อ' และพยัญชนะเบิ้ล)")
 
-uploaded_file = st.file_uploader("เลือกไฟล์ PDF เพื่อรัน v49", type="pdf")
+uploaded_file = st.file_uploader("เลือกไฟล์ PDF เพื่อรัน v50", type="pdf")
 
 if uploaded_file is not None:
     all_data = []
@@ -86,10 +89,12 @@ if uploaded_file is not None:
         for i, page in enumerate(pdf.pages):
             raw_text = page.extract_text() or ""
             
+            # ดึงรหัสครู
             teacher_id = "N/A"
             t_match = re.search(r'\((\d+)\)', raw_text)
             if t_match: teacher_id = t_match.group(1)
 
+            # ดึงชื่อวิชา
             subject_name = "N/A"
             for line in raw_text.split('\n'):
                 if "ชื่อวิชา" in line:
@@ -98,6 +103,7 @@ if uploaded_file is not None:
                         subject_name = universal_thai_cleaner(parts[-1])
                     break
 
+            # ดึงตาราง
             table = page.extract_table()
             if table:
                 for row in table:
@@ -122,4 +128,4 @@ if uploaded_file is not None:
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             df.to_excel(writer, index=False)
-        st.download_button("📥 ดาวน์โหลดไฟล์ Excel", output.getvalue(), "report_v49.xlsx")
+        st.download_button("📥 ดาวน์โหลดไฟล์ Excel", output.getvalue(), "student_report_v50.xlsx")
