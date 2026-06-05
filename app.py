@@ -88,10 +88,10 @@ def universal_thai_cleaner(text):
 
     return text.strip()
 
-st.set_page_config(page_title="ระบบดึงข้อมูลอัจฉริยะ v54", layout="wide")
-st.title("📂 ระบบดึงข้อมูล (ซ่อมคำว่า หน้า, สร้าง, ปัญญา, รู้, ต้น)")
+st.set_page_config(page_title="ระบบแปลงไฟล์ PDF to Excel เฉพาะไฟล์ผลการเรียนบกพร่อง รายครู ธนว เท่านั้น", layout="wide")
+st.title("📂 ระบบแปลงไฟล์ PDF to Excel เฉพาะไฟล์ผลการเรียนบกพร่อง รายครู ธนว เท่านั้น")
 
-uploaded_file = st.file_uploader("เลือกไฟล์ PDF เพื่อรัน v54", type="pdf")
+uploaded_file = st.file_uploader("เลือกไฟล์ PDF เพื่อแปลงเป็น Excel", type="pdf")
 
 if uploaded_file is not None:
     all_data = []
