@@ -16,9 +16,17 @@ def universal_thai_cleaner(text):
     # 2. Normalization ขั้นสูงสุด
     text = unicodedata.normalize('NFKC', text)
     
-    # 3. Unicode Mapping และซ่อมคำเฉพาะหน้า (ค้นคว้า, ด้วย)
+    # 3. Unicode Mapping และซ่อมคำเฉพาะหน้า
     text = text.replace('ค', 'ค้น').replace('คว', 'คว้า')
     text = text.replace('ด', 'ด้')
+    
+    # --- [เพิ่มใหม่ v54] ซ่อมคำเฉพาะ 5 วิชาโดยตรง ไม่กระทบส่วนอื่น ---
+    text = text.replace('สราง', 'สร้าง')
+    text = text.replace('รู', 'รู้')
+    text = text.replace('หนา', 'หน้า')
+    text = text.replace('ตน', 'ต้น')
+    text = text.replace('ป่ญญา', 'ปัญญา')
+    # --------------------------------------------------------
     
     unicode_map = {
         '\uf701': 'ิ', '\uf702': 'ี', '\uf703': 'ึ', '\uf704': 'ื',
@@ -34,7 +42,7 @@ def universal_thai_cleaner(text):
     text = re.sub(r'[\u0000-\u001f\u007f-\u009f\uf000-\uf0ff\u200b\u00a0]', '', text)
     text = "".join(text.split())
 
-    # 5. แก้ไขพยัญชนะเบิ้ลและสระกระโดด (ศลิป -> ศิลป, ฟิสกิ -> ฟิสิก)
+    # 5. แก้ไขพยัญชนะเบิ้ลและสระกระโดด
     text = text.replace('ศลิป', 'ศิลป์') 
     text = text.replace('ฟิสกิ', 'ฟิสิก') 
     text = text.replace('ต่ออ', 'ต่อ')
@@ -43,10 +51,7 @@ def universal_thai_cleaner(text):
     text = text.replace('แผ่นน', 'แผ่น')
     text = text.replace('นำา', 'นำ')
     text = text.replace('ฟ่ง', 'ฟัง')
-    
-    # --- จุดที่แก้ไขเพิ่มเติมสำหรับวิชาภาษาอังกฤษ ---
     text = text.replace('อ่านาน', 'อ่าน') 
-    # ------------------------------------------
     
     # 6. ยุบสระที่เบิ้ล (เเ, แแ, าา)
     for _ in range(2):
@@ -83,11 +88,10 @@ def universal_thai_cleaner(text):
 
     return text.strip()
 
-# ส่วนที่เหลือของ Streamlit เหมือนเดิมทั้งหมด
-st.set_page_config(page_title="ระบบแปลงไฟล์ PDF to Excel เฉพาะไฟล์ผลการเรียนบกพร่อง รายครู ธนว เท่านั้น", layout="wide")
-st.title("📂 ระบบแปลงไฟล์ PDF to Excel เฉพาะไฟล์ผลการเรียนบกพร่อง รายครู ธนว เท่านั้น")
+st.set_page_config(page_title="ระบบดึงข้อมูลอัจฉริยะ v54", layout="wide")
+st.title("📂 ระบบดึงข้อมูล (ซ่อมคำว่า หน้า, สร้าง, ปัญญา, รู้, ต้น)")
 
-uploaded_file = st.file_uploader("เลือกไฟล์ PDF เพื่อแปลงเป็น Excel", type="pdf")
+uploaded_file = st.file_uploader("เลือกไฟล์ PDF เพื่อรัน v54", type="pdf")
 
 if uploaded_file is not None:
     all_data = []
@@ -132,4 +136,4 @@ if uploaded_file is not None:
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             df.to_excel(writer, index=False)
-        st.download_button("📥 ดาวน์โหลดไฟล์ Excel", output.getvalue(), "student_report_v53.xlsx")
+        st.download_button("📥 ดาวน์โหลดไฟล์ Excel", output.getvalue(), "student_report_v54.xlsx")
